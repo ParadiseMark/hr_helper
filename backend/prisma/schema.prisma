@@ -1,0 +1,189 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Accounts & Integrations ───────────────────────────────────
+
+model Account {
+  id             String         @id @default(uuid())
+  companyName    String
+  amoAccountId   String?        @map("amo_account_id")
+  amoDomain      String?        @map("amo_domain")
+  status         String         @default("active")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  vacancies      Vacancy[]
+  candidates     Candidate[]
+  integrations   Integration[]
+
+  @@map("accounts")
+}
+
+model Integration {
+  id           String   @id @default(uuid())
+  accountId    String   @map("account_id")
+  provider     String   // "amocrm" | "hh"
+  accessToken  String?  @map("access_token")
+  refreshToken String?  @map("refresh_token")
+  expiresAt    DateTime? @map("expires_at")
+  metaJson     Json?    @map("meta_json")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  account      Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, provider])
+  @@map("integrations")
+}
+
+// ─── Vacancies & Rules ─────────────────────────────────────────
+
+model Vacancy {
+  id                  String                    @id @default(uuid())
+  accountId           String                    @map("account_id")
+  name                String
+  hhVacancyId         String?                   @map("hh_vacancy_id")
+  jobDescription      String?                   @map("job_description")
+  companyDescription  String?                   @map("company_description")
+  isActive            Boolean                   @default(true) @map("is_active")
+  createdAt           DateTime                  @default(now()) @map("created_at")
+  updatedAt           DateTime                  @updatedAt @map("updated_at")
+
+  account             Account                   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  candidates          Candidate[]
+  scoringRuns         ScoringRun[]
+  hardRules           VacancyHardRules?
+  softRules           VacancySoftRules?
+  autoRejectSettings  VacancyAutoRejectSettings?
+
+  @@map("vacancies")
+}
+
+model VacancyHardRules {
+  id                        String   @id @default(uuid())
+  vacancyId                 String   @unique @map("vacancy_id")
+  ageFrom                   Int?     @map("age_from")
+  ageTo                     Int?     @map("age_to")
+  gender                    String?
+  allowedCitiesJson         Json?    @map("allowed_cities_json")
+  relocationRequired        Boolean? @map("relocation_required")
+  minExperienceYears        Int?     @map("min_experience_years")
+  salaryMax                 Int?     @map("salary_max")
+  languageRequirementsJson  Json?    @map("language_requirements_json")
+  citizenshipRequirementsJson Json?  @map("citizenship_requirements_json")
+  employmentType            String?  @map("employment_type")
+  workSchedule              String?  @map("work_schedule")
+  requiredSkillsJson        Json?    @map("required_skills_json")
+  stopFactorsJson           Json?    @map("stop_factors_json")
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+
+  vacancy                   Vacancy  @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+
+  @@map("vacancy_hard_rules")
+}
+
+model VacancySoftRules {
+  id              String   @id @default(uuid())
+  vacancyId       String   @unique @map("vacancy_id")
+  mustHaveJson    Json?    @map("must_have_json")
+  niceToHaveJson  Json?    @map("nice_to_have_json")
+  advantagesJson  Json?    @map("advantages_json")
+  risksJson       Json?    @map("risks_json")
+  hrComments      String?  @map("hr_comments")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  vacancy         Vacancy  @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+
+  @@map("vacancy_soft_rules")
+}
+
+model VacancyAutoRejectSettings {
+  id                        String   @id @default(uuid())
+  vacancyId                 String   @unique @map("vacancy_id")
+  rejectOnHardFail          Boolean  @default(false) @map("reject_on_hard_fail")
+  rejectOnSoftFail          Boolean  @default(false) @map("reject_on_soft_fail")
+  softRejectThreshold       Int?     @map("soft_reject_threshold")
+  rejectReasonTemplateHard  String?  @map("reject_reason_template_hard")
+  rejectReasonTemplateSoft  String?  @map("reject_reason_template_soft")
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+
+  vacancy                   Vacancy  @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+
+  @@map("vacancy_auto_reject_settings")
+}
+
+// ─── Candidates ────────────────────────────────────────────────
+
+model Candidate {
+  id                  String        @id @default(uuid())
+  accountId           String        @map("account_id")
+  vacancyId           String?       @map("vacancy_id")
+  amoLeadId           String?       @map("amo_lead_id")
+  hhCandidateId       String?       @map("hh_candidate_id")
+  hhResponseId        String?       @map("hh_response_id")
+  fullName            String        @map("full_name")
+  age                 Int?
+  gender              String?
+  city                String?
+  salaryExpectation   Int?          @map("salary_expectation")
+  resumeText          String?       @map("resume_text")
+  rawResumeJson       Json?         @map("raw_resume_json")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+
+  account             Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  vacancy             Vacancy?      @relation(fields: [vacancyId], references: [id], onDelete: SetNull)
+  scoringRuns         ScoringRun[]
+
+  @@map("candidates")
+}
+
+// ─── Scoring ───────────────────────────────────────────────────
+
+model ScoringRun {
+  id                   String   @id @default(uuid())
+  candidateId          String   @map("candidate_id")
+  vacancyId            String   @map("vacancy_id")
+  hardFilterPassed     Boolean? @map("hard_filter_passed")
+  hardRejectReason     String?  @map("hard_reject_reason")
+  score                Int?
+  summary              String?
+  reasonsJson          Json?    @map("reasons_json")
+  strengthsJson        Json?    @map("strengths_json")
+  weaknessesJson       Json?    @map("weaknesses_json")
+  autoRejectTriggered  Boolean? @map("auto_reject_triggered")
+  autoRejectType       String?  @map("auto_reject_type")   // "hard" | "soft"
+  autoRejectStatus     String?  @map("auto_reject_status") // "sent" | "failed" | "disabled" | "not_needed"
+  noteText             String?  @map("note_text")
+  status               String   @default("pending")
+  errorMessage         String?  @map("error_message")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  candidate            Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  vacancy              Vacancy   @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+
+  @@map("scoring_runs")
+}
+
+// ─── Logs ──────────────────────────────────────────────────────
+
+model ApiLog {
+  id           String   @id @default(uuid())
+  accountId    String?  @map("account_id")
+  provider     String
+  action       String
+  requestJson  Json?    @map("request_json")
+  responseJson Json?    @map("response_json")
+  status       String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("api_logs")
+}
