@@ -1,98 +1,238 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# HR Scoring Widget — Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Автоматический первичный скрининг кандидатов: hh.ru → amoCRM → AI scoring → writeback.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Quick Start (локальная разработка)
 
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
+### 1. Запустить PostgreSQL
 
 ```bash
-$ npm install
+# из корня проекта
+docker compose up -d postgres
 ```
 
-## Compile and run the project
+### 2. Установить зависимости
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+cd backend
+npm ci
 ```
 
-## Run tests
+### 3. Настроить окружение
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+cp .env.example .env
+# заполнить значения в .env
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### 4. Применить миграции и seed
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npx prisma migrate deploy
+npx prisma generate
+npx tsx prisma/seed.ts
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### 5. Запустить сервер
 
-## Resources
+```bash
+npm run start:dev
+```
 
-Check out a few resources that may come in handy when working with NestJS:
+Сервер будет доступен на `http://localhost:3000`.
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+### 6. Проверить
 
-## Support
+```bash
+curl http://localhost:3000/health
+```
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+---
 
-## Stay in touch
+## Запуск через Docker (всё в контейнерах)
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+```bash
+# из корня проекта
+docker compose up -d
+```
 
-## License
+Это поднимет PostgreSQL + backend. После старта применить миграции:
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+```bash
+docker compose exec backend npx prisma migrate deploy
+```
+
+---
+
+## Аутентификация
+
+Все API-запросы (кроме публичных) требуют заголовок:
+
+```
+x-api-key: <ваш_ключ>
+```
+
+Seed создаёт демо-ключ: `hrsw_seed_demo_key_for_local_development_only`
+
+Сгенерировать новый ключ:
+
+```bash
+curl -X POST -H "x-api-key: <текущий_ключ>" http://localhost:3000/accounts/<id>/rotate-api-key
+```
+
+---
+
+## Переменные окружения
+
+| Переменная | Обязательная | Описание |
+|---|---|---|
+| `APP_PORT` | нет | Порт сервера (по умолчанию 3000) |
+| `APP_ENV` | нет | Окружение: development / production |
+| `DATABASE_URL` | **да** | PostgreSQL connection string |
+| `OPENAI_API_KEY` | **да** | Ключ OpenAI для AI-скоринга |
+| `OPENAI_MODEL` | нет | Модель OpenAI (по умолчанию gpt-4.1-mini) |
+| `AMO_CLIENT_ID` | **да** | Client ID интеграции amoCRM |
+| `AMO_CLIENT_SECRET` | **да** | Client Secret интеграции amoCRM |
+| `AMO_REDIRECT_URI` | **да** | URL для OAuth callback amoCRM |
+| `AMOCRM_FIELD_AI_SCORE_ID` | **да** | ID кастомного поля AI Score |
+| `AMOCRM_FIELD_AI_SCORING_STATUS_ID` | **да** | ID кастомного поля AI Scoring Status |
+| `AMOCRM_FIELD_AI_HARD_FILTER_STATUS_ID` | **да** | ID кастомного поля AI Hard Filter Status |
+| `AMOCRM_FIELD_AI_LAST_SCORED_AT_ID` | **да** | ID кастомного поля AI Last Scored At |
+| `HH_CLIENT_ID` | нет* | Client ID приложения hh.ru |
+| `HH_CLIENT_SECRET` | нет* | Client Secret приложения hh.ru |
+
+\* hh.ru-интеграция пока не реализована.
+
+---
+
+## API Endpoints
+
+### Публичные (без API-ключа)
+
+| Метод | Путь | Описание |
+|---|---|---|
+| GET | `/health` | Health check |
+| POST | `/webhooks/amocrm/candidate-created` | Webhook от amoCRM |
+| POST | `/integrations/amocrm/callback` | OAuth callback amoCRM |
+
+### Защищённые (требуют `x-api-key`)
+
+| Метод | Путь | Описание |
+|---|---|---|
+| **Accounts** | | |
+| GET | `/accounts` | Список аккаунтов |
+| POST | `/accounts/:id/rotate-api-key` | Перегенерировать API-ключ |
+| **Vacancies** | | |
+| POST | `/vacancies` | Создать вакансию |
+| GET | `/vacancies` | Список вакансий |
+| GET | `/vacancies/:id` | Вакансия с правилами |
+| PUT | `/vacancies/:id` | Обновить вакансию |
+| GET | `/vacancies/:id/hard-rules` | Hard-фильтры вакансии |
+| PUT | `/vacancies/:id/hard-rules` | Создать/обновить hard-фильтры |
+| GET | `/vacancies/:id/soft-rules` | Soft-критерии вакансии |
+| PUT | `/vacancies/:id/soft-rules` | Создать/обновить soft-критерии |
+| GET | `/vacancies/:id/auto-reject-settings` | Настройки автоотказа |
+| PUT | `/vacancies/:id/auto-reject-settings` | Создать/обновить настройки автоотказа |
+| **Candidates** | | |
+| POST | `/candidates` | Создать кандидата |
+| GET | `/candidates` | Список кандидатов |
+| GET | `/candidates/:id` | Кандидат по ID |
+| **Scoring** | | |
+| POST | `/scoring/run` | Запустить скоринг (`{ accountId, amoLeadId }`) |
+| GET | `/scoring/history/:candidateId` | История скорингов кандидата |
+| **Integrations** | | |
+| GET | `/integrations/amocrm/auth-url?accountId=` | URL для OAuth amoCRM |
+| GET | `/integrations/status?accountId=` | Статус интеграций |
+
+---
+
+## Кастомные поля amoCRM
+
+Создайте в amoCRM 4 кастомных поля для сделок:
+
+| Поле | Тип | Переменная |
+|---|---|---|
+| AI Score | Число | `AMOCRM_FIELD_AI_SCORE_ID` |
+| AI Scoring Status | Текст | `AMOCRM_FIELD_AI_SCORING_STATUS_ID` |
+| AI Hard Filter Status | Текст | `AMOCRM_FIELD_AI_HARD_FILTER_STATUS_ID` |
+| AI Last Scored At | Дата | `AMOCRM_FIELD_AI_LAST_SCORED_AT_ID` |
+
+ID полей укажите в `.env`.
+
+---
+
+## Архитектура
+
+```
+┌─────────────┐    ┌──────────────┐    ┌──────────────┐
+│   hh.ru     │───>│   Backend    │───>│   amoCRM     │
+│  (кандидаты)│    │   (NestJS)   │    │  (writeback) │
+└─────────────┘    └──────┬───────┘    └──────────────┘
+                          │
+                   ┌──────┴───────┐
+                   │  PostgreSQL  │
+                   └──────┬───────┘
+                          │
+                   ┌──────┴───────┐
+                   │   OpenAI     │
+                   │  (scoring)   │
+                   └──────────────┘
+```
+
+### Модули
+
+| Модуль | Назначение |
+|---|---|
+| `AuthModule` | API-key аутентификация |
+| `AccountsModule` | Управление аккаунтами |
+| `VacanciesModule` | CRUD вакансий + hard/soft rules + auto-reject settings |
+| `CandidatesModule` | CRUD кандидатов |
+| `ScoringModule` | Hard filter → AI scoring → сохранение результата |
+| `AmoIntegrationModule` | OAuth, API-клиент, writeback в amoCRM |
+| `IntegrationsModule` | OAuth endpoints, статус интеграций |
+| `WebhooksModule` | Приём вебхуков от amoCRM |
+| `LogsModule` | Логирование API-вызовов |
+| `HealthModule` | Health check |
+
+### Scoring Pipeline
+
+```
+Webhook / POST /scoring/run
+       │
+       ▼
+ Найти кандидата + вакансию
+       │
+       ▼
+ Загрузить hard_rules из БД
+       │
+       ▼
+ Hard Filter (13 проверок)
+       │
+   ┌───┴───┐
+   │fail   │pass
+   ▼       ▼
+ reject   AI Scoring (OpenAI + soft_rules)
+   │       │
+   ▼       ▼
+ Сохранить ScoringRun в БД
+       │
+       ▼
+ Writeback в amoCRM (поля + note)
+```
+
+---
+
+## Деплой
+
+Подробная инструкция: [`../DEPLOYMENT_GUIDE.md`](../DEPLOYMENT_GUIDE.md)
+
+### Обновление на сервере
+
+```bash
+cd ~/apps/hr_helper && git pull
+cd backend && npm ci
+npx prisma migrate deploy
+npx prisma generate
+npm run build
+pm2 restart hr-scoring-api --update-env
+```

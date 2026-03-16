@@ -15,19 +15,26 @@ const prisma = new PrismaClient({
 })
 
 async function main() {
+  const SEED_API_KEY = 'hrsw_seed_demo_key_for_local_development_only'
+
   const account = await prisma.account.upsert({
     where: {
       id: 'seed-account-1',
     },
-    update: {},
+    update: {
+      apiKey: SEED_API_KEY,
+    },
     create: {
       id: 'seed-account-1',
       companyName: 'Demo HR Account',
       amoAccountId: '12345678',
       amoDomain: 'demohr',
+      apiKey: SEED_API_KEY,
       status: 'active',
     },
   })
+
+  console.log(`Demo API key: ${SEED_API_KEY}`)
 
   const vacancy = await prisma.vacancy.upsert({
     where: {

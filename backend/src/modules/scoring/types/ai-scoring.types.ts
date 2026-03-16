@@ -11,6 +11,14 @@ export interface AiScoringVacancyInput {
   companyDescription?: string | null
 }
 
+export interface AiScoringSoftRulesInput {
+  mustHave?: string[] | null
+  niceToHave?: string[] | null
+  advantages?: string[] | null
+  risks?: string[] | null
+  hrComments?: string | null
+}
+
 export interface AiScoringResult {
   score: number
   summary: string

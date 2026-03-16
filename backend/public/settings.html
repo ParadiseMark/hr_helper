@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HR Scoring Widget — Настройки вакансий</title>
+  <style>
+    :root {
+      --bg: #f5f6fa;
+      --card: #ffffff;
+      --primary: #4f6ef7;
+      --primary-hover: #3b5de7;
+      --danger: #e74c3c;
+      --success: #27ae60;
+      --text: #2c3e50;
+      --text-muted: #7f8c8d;
+      --border: #e0e4ec;
+      --radius: 10px;
+      --shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+
+    .app-header { background: var(--card); border-bottom: 1px solid var(--border); padding: 16px 24px; display: flex; align-items: center; gap: 16px; box-shadow: var(--shadow); }
+    .app-header h1 { font-size: 18px; font-weight: 600; }
+    .app-header .subtitle { color: var(--text-muted); font-size: 13px; }
+
+    .container { max-width: 840px; margin: 24px auto; padding: 0 16px; }
+
+    .vacancy-selector { display: flex; gap: 12px; align-items: center; margin-bottom: 24px; }
+    .vacancy-selector select { flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 14px; background: var(--card); }
+    .vacancy-selector select:focus { outline: none; border-color: var(--primary); }
+
+    .card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 20px; overflow: hidden; }
+    .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
+    .card-header h2 { font-size: 15px; font-weight: 600; }
+    .card-header .badge { font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 500; }
+    .badge-active { background: #e8f5e9; color: var(--success); }
+    .badge-inactive { background: #fce4ec; color: var(--danger); }
+    .card-body { padding: 20px; }
+    .card-body.collapsed { display: none; }
+
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .form-row.full { grid-template-columns: 1fr; }
+    .form-group { display: flex; flex-direction: column; gap: 4px; }
+    .form-group label { font-size: 12px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .form-group input, .form-group textarea, .form-group select { padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; font-family: inherit; transition: border-color 0.2s; }
+    .form-group input:focus, .form-group textarea:focus, .form-group select:focus { outline: none; border-color: var(--primary); }
+    .form-group textarea { resize: vertical; min-height: 60px; }
+    .form-group .hint { font-size: 11px; color: var(--text-muted); }
+
+    .toggle-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .toggle { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle .slider { position: absolute; inset: 0; background: #ccc; border-radius: 24px; cursor: pointer; transition: 0.3s; }
+    .toggle .slider::before { content: ''; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.3s; }
+    .toggle input:checked + .slider { background: var(--primary); }
+    .toggle input:checked + .slider::before { transform: translateX(20px); }
+    .toggle-label { font-size: 14px; }
+
+    .btn { padding: 10px 20px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-primary:disabled { background: #b0bec5; cursor: not-allowed; }
+
+    .actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px; }
+
+    .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: var(--radius); color: white; font-size: 14px; font-weight: 500; box-shadow: 0 4px 20px rgba(0,0,0,0.15); transform: translateY(100px); opacity: 0; transition: all 0.3s; z-index: 1000; }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.success { background: var(--success); }
+    .toast.error { background: var(--danger); }
+
+    .loading { text-align: center; padding: 40px; color: var(--text-muted); }
+    .chevron { transition: transform 0.2s; display: inline-block; }
+    .chevron.open { transform: rotate(90deg); }
+
+    @media (max-width: 600px) {
+      .form-row { grid-template-columns: 1fr; }
+      .container { padding: 0 8px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-header">
+  <div>
+    <h1>HR Scoring Widget</h1>
+    <div class="subtitle">Настройки вакансий и правила скоринга</div>
+  </div>
+</div>
+
+<div class="container">
+  <div class="vacancy-selector">
+    <select id="vacancySelect">
+      <option value="">Загрузка вакансий...</option>
+    </select>
+  </div>
+
+  <div id="settingsContainer" style="display:none;">
+
+    <!-- Basic Info -->
+    <div class="card" data-section="basic">
+      <div class="card-header" onclick="toggleSection('basic')">
+        <h2><span class="chevron open" id="chevron-basic">▶</span> Основные данные</h2>
+        <span class="badge badge-active" id="badge-active">Активна</span>
+      </div>
+      <div class="card-body" id="body-basic">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Название вакансии</label>
+            <input type="text" id="v-name" placeholder="Sales Manager">
+          </div>
+          <div class="form-group">
+            <label>hh.ru Vacancy ID</label>
+            <input type="text" id="v-hhVacancyId" placeholder="12345678">
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Описание вакансии</label>
+            <textarea id="v-jobDescription" rows="3" placeholder="Описание позиции, обязанности..."></textarea>
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Описание компании</label>
+            <textarea id="v-companyDescription" rows="2" placeholder="О компании..."></textarea>
+          </div>
+        </div>
+        <div class="toggle-row">
+          <label class="toggle"><input type="checkbox" id="v-isActive" checked><span class="slider"></span></label>
+          <span class="toggle-label">Вакансия активна</span>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" onclick="saveBasic()">Сохранить</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hard Filters -->
+    <div class="card" data-section="hard">
+      <div class="card-header" onclick="toggleSection('hard')">
+        <h2><span class="chevron open" id="chevron-hard">▶</span> Hard Filters (стоп-факторы)</h2>
+      </div>
+      <div class="card-body" id="body-hard">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Возраст от</label>
+            <input type="number" id="h-ageFrom" min="0" placeholder="18">
+          </div>
+          <div class="form-group">
+            <label>Возраст до</label>
+            <input type="number" id="h-ageTo" min="0" placeholder="45">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Пол</label>
+            <select id="h-gender">
+              <option value="">Любой</option>
+              <option value="male">Мужской</option>
+              <option value="female">Женский</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Тип занятости</label>
+            <select id="h-employmentType">
+              <option value="">Любой</option>
+              <option value="full">Полная</option>
+              <option value="part">Частичная</option>
+              <option value="project">Проектная</option>
+              <option value="internship">Стажировка</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Минимум лет опыта</label>
+            <input type="number" id="h-minExperienceYears" min="0" placeholder="1">
+          </div>
+          <div class="form-group">
+            <label>Максимальная зарплата</label>
+            <input type="number" id="h-salaryMax" min="0" placeholder="250000">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>График работы</label>
+            <select id="h-workSchedule">
+              <option value="">Любой</option>
+              <option value="fullDay">Полный день</option>
+              <option value="shift">Сменный</option>
+              <option value="flexible">Гибкий</option>
+              <option value="remote">Удалённый</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Требуется релокация</label>
+            <select id="h-relocationRequired">
+              <option value="">Не важно</option>
+              <option value="true">Да</option>
+              <option value="false">Нет</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Разрешённые города</label>
+            <input type="text" id="h-allowedCitiesJson" placeholder="Москва, Санкт-Петербург, Dubai">
+            <span class="hint">Через запятую</span>
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Требуемые языки</label>
+            <input type="text" id="h-languageRequirementsJson" placeholder="Русский, English">
+            <span class="hint">Через запятую</span>
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Требования к гражданству</label>
+            <input type="text" id="h-citizenshipRequirementsJson" placeholder="РФ, Беларусь">
+            <span class="hint">Через запятую</span>
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Обязательные навыки</label>
+            <input type="text" id="h-requiredSkillsJson" placeholder="CRM, B2B sales, Excel">
+            <span class="hint">Через запятую. Кандидат без этих навыков будет отклонён</span>
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Стоп-факторы</label>
+            <input type="text" id="h-stopFactorsJson" placeholder="Судимость, Увольнение по статье">
+            <span class="hint">Через запятую. Если найдены у кандидата — отклонение</span>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" onclick="saveHardRules()">Сохранить</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Soft Scoring -->
+    <div class="card" data-section="soft">
+      <div class="card-header" onclick="toggleSection('soft')">
+        <h2><span class="chevron open" id="chevron-soft">▶</span> Soft Scoring (критерии для AI)</h2>
+      </div>
+      <div class="card-body" id="body-soft">
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Must Have (обязательные)</label>
+            <textarea id="s-mustHaveJson" rows="2" placeholder="Опыт CRM&#10;B2B продажи&#10;Холодные звонки"></textarea>
+            <span class="hint">Каждый пункт с новой строки</span>
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Nice to Have (желательные)</label>
+            <textarea id="s-niceToHaveJson" rows="2" placeholder="Английский B2+&#10;Опыт управления"></textarea>
+            <span class="hint">Каждый пункт с новой строки</span>
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Преимущества (повышают оценку)</label>
+            <textarea id="s-advantagesJson" rows="2" placeholder="Быстрая обучаемость&#10;Проактивность"></textarea>
+            <span class="hint">Каждый пункт с новой строки</span>
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Риски (снижают оценку)</label>
+            <textarea id="s-risksJson" rows="2" placeholder="Частая смена работы&#10;Нет релевантного опыта"></textarea>
+            <span class="hint">Каждый пункт с новой строки</span>
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Комментарий HR</label>
+            <textarea id="s-hrComments" rows="2" placeholder="Свободный комментарий для AI..."></textarea>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" onclick="saveSoftRules()">Сохранить</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Auto Reject -->
+    <div class="card" data-section="reject">
+      <div class="card-header" onclick="toggleSection('reject')">
+        <h2><span class="chevron open" id="chevron-reject">▶</span> Автоотказ</h2>
+      </div>
+      <div class="card-body" id="body-reject">
+        <div class="toggle-row">
+          <label class="toggle"><input type="checkbox" id="r-rejectOnHardFail"><span class="slider"></span></label>
+          <span class="toggle-label">Автоотказ при провале hard-фильтра</span>
+        </div>
+        <div class="toggle-row">
+          <label class="toggle"><input type="checkbox" id="r-rejectOnSoftFail"><span class="slider"></span></label>
+          <span class="toggle-label">Автоотказ при низком AI-скоре</span>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Порог автоотказа (score)</label>
+            <input type="number" id="r-softRejectThreshold" min="0" max="100" placeholder="30">
+            <span class="hint">Если AI score ниже порога — автоотказ</span>
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Шаблон отказа (hard reject)</label>
+            <textarea id="r-rejectReasonTemplateHard" rows="2" placeholder="К сожалению, ваша кандидатура не соответствует требованиям вакансии."></textarea>
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Шаблон отказа (soft reject)</label>
+            <textarea id="r-rejectReasonTemplateSoft" rows="2" placeholder="Благодарим за интерес к вакансии. К сожалению, мы приняли решение в пользу другого кандидата."></textarea>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" onclick="saveAutoReject()">Сохранить</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="loadingState" class="loading">Загрузка...</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API_KEY = new URLSearchParams(window.location.search).get('apiKey') || ''
+const BASE = window.location.origin
+
+function headers() {
+  return { 'Content-Type': 'application/json', 'x-api-key': API_KEY }
+}
+
+async function api(method, path, body) {
+  const opts = { method, headers: headers() }
+  if (body) opts.body = JSON.stringify(body)
+  const res = await fetch(BASE + path, opts)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.message || `HTTP ${res.status}`)
+  }
+  return res.json()
+}
+
+function toast(msg, type = 'success') {
+  const el = document.getElementById('toast')
+  el.textContent = msg
+  el.className = `toast ${type} show`
+  setTimeout(() => el.classList.remove('show'), 3000)
+}
+
+function toggleSection(name) {
+  const body = document.getElementById(`body-${name}`)
+  const chevron = document.getElementById(`chevron-${name}`)
+  body.classList.toggle('collapsed')
+  chevron.classList.toggle('open')
+}
+
+function splitLines(text) {
+  return text.split('\n').map(s => s.trim()).filter(Boolean)
+}
+function splitComma(text) {
+  return text.split(',').map(s => s.trim()).filter(Boolean)
+}
+function joinLines(arr) {
+  return (arr || []).join('\n')
+}
+function joinComma(arr) {
+  return (arr || []).join(', ')
+}
+
+let currentVacancyId = null
+
+async function loadVacancies() {
+  try {
+    const vacancies = await api('GET', '/vacancies')
+    const select = document.getElementById('vacancySelect')
+    select.innerHTML = '<option value="">— Выберите вакансию —</option>'
+    vacancies.forEach(v => {
+      const opt = document.createElement('option')
+      opt.value = v.id
+      opt.textContent = `${v.name}${v.isActive ? '' : ' (неактивна)'}`
+      select.appendChild(opt)
+    })
+    document.getElementById('loadingState').style.display = 'none'
+    select.addEventListener('change', () => {
+      if (select.value) loadVacancy(select.value)
+      else document.getElementById('settingsContainer').style.display = 'none'
+    })
+  } catch (e) {
+    document.getElementById('loadingState').textContent = 'Ошибка загрузки: ' + e.message
+  }
+}
+
+async function loadVacancy(id) {
+  currentVacancyId = id
+  try {
+    const v = await api('GET', `/vacancies/${id}`)
+    document.getElementById('settingsContainer').style.display = 'block'
+
+    document.getElementById('v-name').value = v.name || ''
+    document.getElementById('v-hhVacancyId').value = v.hhVacancyId || ''
+    document.getElementById('v-jobDescription').value = v.jobDescription || ''
+    document.getElementById('v-companyDescription').value = v.companyDescription || ''
+    document.getElementById('v-isActive').checked = v.isActive
+
+    const badge = document.getElementById('badge-active')
+    badge.textContent = v.isActive ? 'Активна' : 'Неактивна'
+    badge.className = `badge ${v.isActive ? 'badge-active' : 'badge-inactive'}`
+
+    const h = v.hardRules || {}
+    document.getElementById('h-ageFrom').value = h.ageFrom ?? ''
+    document.getElementById('h-ageTo').value = h.ageTo ?? ''
+    document.getElementById('h-gender').value = h.gender || ''
+    document.getElementById('h-employmentType').value = h.employmentType || ''
+    document.getElementById('h-minExperienceYears').value = h.minExperienceYears ?? ''
+    document.getElementById('h-salaryMax').value = h.salaryMax ?? ''
+    document.getElementById('h-workSchedule').value = h.workSchedule || ''
+    document.getElementById('h-relocationRequired').value = h.relocationRequired != null ? String(h.relocationRequired) : ''
+    document.getElementById('h-allowedCitiesJson').value = joinComma(h.allowedCitiesJson)
+    document.getElementById('h-languageRequirementsJson').value = joinComma(h.languageRequirementsJson)
+    document.getElementById('h-citizenshipRequirementsJson').value = joinComma(h.citizenshipRequirementsJson)
+    document.getElementById('h-requiredSkillsJson').value = joinComma(h.requiredSkillsJson)
+    document.getElementById('h-stopFactorsJson').value = joinComma(h.stopFactorsJson)
+
+    const s = v.softRules || {}
+    document.getElementById('s-mustHaveJson').value = joinLines(s.mustHaveJson)
+    document.getElementById('s-niceToHaveJson').value = joinLines(s.niceToHaveJson)
+    document.getElementById('s-advantagesJson').value = joinLines(s.advantagesJson)
+    document.getElementById('s-risksJson').value = joinLines(s.risksJson)
+    document.getElementById('s-hrComments').value = s.hrComments || ''
+
+    const r = v.autoRejectSettings || {}
+    document.getElementById('r-rejectOnHardFail').checked = !!r.rejectOnHardFail
+    document.getElementById('r-rejectOnSoftFail').checked = !!r.rejectOnSoftFail
+    document.getElementById('r-softRejectThreshold').value = r.softRejectThreshold ?? ''
+    document.getElementById('r-rejectReasonTemplateHard').value = r.rejectReasonTemplateHard || ''
+    document.getElementById('r-rejectReasonTemplateSoft').value = r.rejectReasonTemplateSoft || ''
+  } catch (e) {
+    toast('Ошибка загрузки вакансии: ' + e.message, 'error')
+  }
+}
+
+function intOrNull(val) { const n = parseInt(val); return isNaN(n) ? null : n }
+function strOrNull(val) { return val || null }
+function boolOrNull(val) { return val === '' ? null : val === 'true' }
+function commaOrNull(val) { const arr = splitComma(val); return arr.length ? arr : null }
+function linesOrNull(val) { const arr = splitLines(val); return arr.length ? arr : null }
+
+async function saveBasic() {
+  try {
+    await api('PUT', `/vacancies/${currentVacancyId}`, {
+      name: document.getElementById('v-name').value,
+      hhVacancyId: strOrNull(document.getElementById('v-hhVacancyId').value),
+      jobDescription: strOrNull(document.getElementById('v-jobDescription').value),
+      companyDescription: strOrNull(document.getElementById('v-companyDescription').value),
+      isActive: document.getElementById('v-isActive').checked,
+    })
+    const badge = document.getElementById('badge-active')
+    const active = document.getElementById('v-isActive').checked
+    badge.textContent = active ? 'Активна' : 'Неактивна'
+    badge.className = `badge ${active ? 'badge-active' : 'badge-inactive'}`
+    toast('Основные данные сохранены')
+  } catch (e) { toast(e.message, 'error') }
+}
+
+async function saveHardRules() {
+  try {
+    await api('PUT', `/vacancies/${currentVacancyId}/hard-rules`, {
+      ageFrom: intOrNull(document.getElementById('h-ageFrom').value),
+      ageTo: intOrNull(document.getElementById('h-ageTo').value),
+      gender: strOrNull(document.getElementById('h-gender').value),
+      employmentType: strOrNull(document.getElementById('h-employmentType').value),
+      minExperienceYears: intOrNull(document.getElementById('h-minExperienceYears').value),
+      salaryMax: intOrNull(document.getElementById('h-salaryMax').value),
+      workSchedule: strOrNull(document.getElementById('h-workSchedule').value),
+      relocationRequired: boolOrNull(document.getElementById('h-relocationRequired').value),
+      allowedCitiesJson: commaOrNull(document.getElementById('h-allowedCitiesJson').value),
+      languageRequirementsJson: commaOrNull(document.getElementById('h-languageRequirementsJson').value),
+      citizenshipRequirementsJson: commaOrNull(document.getElementById('h-citizenshipRequirementsJson').value),
+      requiredSkillsJson: commaOrNull(document.getElementById('h-requiredSkillsJson').value),
+      stopFactorsJson: commaOrNull(document.getElementById('h-stopFactorsJson').value),
+    })
+    toast('Hard-фильтры сохранены')
+  } catch (e) { toast(e.message, 'error') }
+}
+
+async function saveSoftRules() {
+  try {
+    await api('PUT', `/vacancies/${currentVacancyId}/soft-rules`, {
+      mustHaveJson: linesOrNull(document.getElementById('s-mustHaveJson').value),
+      niceToHaveJson: linesOrNull(document.getElementById('s-niceToHaveJson').value),
+      advantagesJson: linesOrNull(document.getElementById('s-advantagesJson').value),
+      risksJson: linesOrNull(document.getElementById('s-risksJson').value),
+      hrComments: strOrNull(document.getElementById('s-hrComments').value),
+    })
+    toast('Soft-критерии сохранены')
+  } catch (e) { toast(e.message, 'error') }
+}
+
+async function saveAutoReject() {
+  try {
+    await api('PUT', `/vacancies/${currentVacancyId}/auto-reject-settings`, {
+      rejectOnHardFail: document.getElementById('r-rejectOnHardFail').checked,
+      rejectOnSoftFail: document.getElementById('r-rejectOnSoftFail').checked,
+      softRejectThreshold: intOrNull(document.getElementById('r-softRejectThreshold').value),
+      rejectReasonTemplateHard: strOrNull(document.getElementById('r-rejectReasonTemplateHard').value),
+      rejectReasonTemplateSoft: strOrNull(document.getElementById('r-rejectReasonTemplateSoft').value),
+    })
+    toast('Настройки автоотказа сохранены')
+  } catch (e) { toast(e.message, 'error') }
+}
+
+loadVacancies()
+</script>
+</body>
+</html>

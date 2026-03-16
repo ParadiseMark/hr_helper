@@ -13,6 +13,7 @@ model Account {
   companyName    String
   amoAccountId   String?        @map("amo_account_id")
   amoDomain      String?        @map("amo_domain")
+  apiKey         String?        @unique @map("api_key")
   status         String         @default("active")
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")

@@ -1,0 +1,11 @@
+{
+  "widget": {
+    "name": "hr_scoring_widget",
+    "description": "AI-скрининг кандидатов: hard filters + soft scoring через OpenAI",
+    "version": "1.0.0",
+    "locale": ["ru"],
+    "interface_version": 2,
+    "init_once": false,
+    "advanced_settings": "https://YOUR_SERVER/widget/settings.html"
+  }
+}

@@ -1,41 +1,27 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
+import { Injectable, Logger } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
 import { firstValueFrom } from 'rxjs'
 import { LogsService } from '../../../logs/logs.service'
+import { AmoOAuthService } from '../amo-oauth/amo-oauth.service'
 
 @Injectable()
 export class AmoCrmApiService {
+  private readonly logger = new Logger(AmoCrmApiService.name)
+
   constructor(
     private readonly httpService: HttpService,
-    private readonly configService: ConfigService,
     private readonly logsService: LogsService,
+    private readonly amoOAuthService: AmoOAuthService,
   ) {}
 
-  private get baseUrl() {
-    const value = this.configService.get<string>('AMOCRM_BASE_URL')
-
-    if (!value) {
-      throw new InternalServerErrorException('AMOCRM_BASE_URL is not set')
-    }
-
-    return value
-  }
-
-  private get accessToken() {
-    const value = this.configService.get<string>('AMOCRM_ACCESS_TOKEN')
-
-    if (!value) {
-      throw new InternalServerErrorException('AMOCRM_ACCESS_TOKEN is not set')
-    }
-
-    return value
-  }
-
-  private get headers() {
+  private async getAuthHeaders(accountId: string) {
+    const tokens = await this.amoOAuthService.getValidTokens(accountId)
     return {
-      Authorization: `Bearer ${this.accessToken}`,
-      'Content-Type': 'application/json',
+      headers: {
+        Authorization: `Bearer ${tokens.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      baseUrl: tokens.baseUrl,
     }
   }
 
@@ -47,27 +33,20 @@ export class AmoCrmApiService {
       values: Array<{ value: string | number }>
     }>,
   ) {
-    const url = `${this.baseUrl}/api/v4/leads/${amoLeadId}`
-
-    const payload = {
-      custom_fields_values: customFieldsValues,
-    }
+    const { headers, baseUrl } = await this.getAuthHeaders(accountId)
+    const url = `${baseUrl}/api/v4/leads/${amoLeadId}`
+    const payload = { custom_fields_values: customFieldsValues }
 
     try {
       const response = await firstValueFrom(
-        this.httpService.patch(url, payload, {
-          headers: this.headers,
-        }),
+        this.httpService.patch(url, payload, { headers, timeout: 10000 }),
       )
 
       await this.logsService.createApiLog({
         accountId,
         provider: 'amocrm',
         action: 'lead.update.custom-fields',
-        requestJson: {
-          amoLeadId,
-          payload,
-        },
+        requestJson: { amoLeadId, payload },
         responseJson: response.data,
         status: 'success',
       })
@@ -78,17 +57,13 @@ export class AmoCrmApiService {
         accountId,
         provider: 'amocrm',
         action: 'lead.update.custom-fields',
-        requestJson: {
-          amoLeadId,
-          payload,
-        },
+        requestJson: { amoLeadId, payload },
         responseJson: {
           message: error?.message ?? 'Unknown amoCRM error',
           response: error?.response?.data ?? null,
         },
         status: 'error',
       })
-
       throw error
     }
   }
@@ -98,33 +73,27 @@ export class AmoCrmApiService {
     amoLeadId: string,
     noteText: string,
   ) {
-    const url = `${this.baseUrl}/api/v4/leads/notes`
+    const { headers, baseUrl } = await this.getAuthHeaders(accountId)
+    const url = `${baseUrl}/api/v4/leads/notes`
 
     const payload = [
       {
         entity_id: Number(amoLeadId),
         note_type: 'common',
-        params: {
-          text: noteText,
-        },
+        params: { text: noteText },
       },
     ]
 
     try {
       const response = await firstValueFrom(
-        this.httpService.post(url, payload, {
-          headers: this.headers,
-        }),
+        this.httpService.post(url, payload, { headers, timeout: 10000 }),
       )
 
       await this.logsService.createApiLog({
         accountId,
         provider: 'amocrm',
         action: 'lead.create.note',
-        requestJson: {
-          amoLeadId,
-          payload,
-        },
+        requestJson: { amoLeadId, payload },
         responseJson: response.data,
         status: 'success',
       })
@@ -135,18 +104,73 @@ export class AmoCrmApiService {
         accountId,
         provider: 'amocrm',
         action: 'lead.create.note',
-        requestJson: {
-          amoLeadId,
-          payload,
-        },
+        requestJson: { amoLeadId, payload },
         responseJson: {
           message: error?.message ?? 'Unknown amoCRM error',
           response: error?.response?.data ?? null,
         },
         status: 'error',
       })
-
       throw error
     }
+  }
+
+  async createOrUpdateLead(
+    accountId: string,
+    leadData: {
+      name: string
+      customFieldsValues?: Array<{
+        field_id: number
+        values: Array<{ value: string | number }>
+      }>
+    },
+    existingLeadId?: string,
+  ) {
+    const { headers, baseUrl } = await this.getAuthHeaders(accountId)
+
+    if (existingLeadId) {
+      const url = `${baseUrl}/api/v4/leads/${existingLeadId}`
+      const payload: any = {}
+      if (leadData.name) payload.name = leadData.name
+      if (leadData.customFieldsValues) payload.custom_fields_values = leadData.customFieldsValues
+
+      const response = await firstValueFrom(
+        this.httpService.patch(url, payload, { headers, timeout: 10000 }),
+      )
+
+      await this.logsService.createApiLog({
+        accountId,
+        provider: 'amocrm',
+        action: 'lead.update',
+        requestJson: { existingLeadId, payload },
+        responseJson: response.data,
+        status: 'success',
+      })
+
+      return response.data
+    }
+
+    const url = `${baseUrl}/api/v4/leads`
+    const payload = [
+      {
+        name: leadData.name,
+        custom_fields_values: leadData.customFieldsValues ?? [],
+      },
+    ]
+
+    const response = await firstValueFrom(
+      this.httpService.post(url, payload, { headers, timeout: 10000 }),
+    )
+
+    await this.logsService.createApiLog({
+      accountId,
+      provider: 'amocrm',
+      action: 'lead.create',
+      requestJson: { payload },
+      responseJson: response.data,
+      status: 'success',
+    })
+
+    return response.data
   }
 }

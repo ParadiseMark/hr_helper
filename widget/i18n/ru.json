@@ -1,0 +1,10 @@
+{
+  "widget": {
+    "name": "HR Scoring Widget",
+    "short_description": "AI-скрининг кандидатов",
+    "description": "Автоматический первичный скрининг кандидатов с hh.ru: hard filters + AI soft scoring через OpenAI. Результаты записываются в карточку сделки."
+  },
+  "settings": {
+    "api_key": "API-ключ"
+  }
+}

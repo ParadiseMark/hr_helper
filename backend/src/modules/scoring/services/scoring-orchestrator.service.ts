@@ -1,11 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../../../prisma/prisma.service'
 import { LogsService } from '../../logs/logs.service'
 import { HardFilterService } from './hard-filter.service'
 import { AiScoringService } from './ai-scoring.service'
+import type { HardFilterRules } from '../types/hard-filter.types'
+import type { AiScoringSoftRulesInput } from '../types/ai-scoring.types'
 
 @Injectable()
 export class ScoringOrchestratorService {
+  private readonly logger = new Logger(ScoringOrchestratorService.name)
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly hardFilterService: HardFilterService,
@@ -17,39 +21,36 @@ export class ScoringOrchestratorService {
     const candidate = await this.prisma.candidate.findUnique({
       where: { id: candidateId },
     })
-
     if (!candidate) {
-      throw new NotFoundException(
-        `Candidate with id "${candidateId}" not found`,
-      )
+      throw new NotFoundException(`Candidate with id "${candidateId}" not found`)
     }
 
     const vacancy = await this.prisma.vacancy.findUnique({
       where: { id: vacancyId },
+      include: {
+        hardRules: true,
+        softRules: true,
+        autoRejectSettings: true,
+      },
     })
-
     if (!vacancy) {
-      throw new NotFoundException(
-        `Vacancy with id "${vacancyId}" not found`,
-      )
+      throw new NotFoundException(`Vacancy with id "${vacancyId}" not found`)
     }
 
-    const requestPayload = {
-      candidateId,
-      vacancyId,
-    }
+    const requestPayload = { candidateId, vacancyId }
 
     try {
+      // --- Hard Filter (rules from DB) ---
+      const hardRules = this.mapHardRules(vacancy.hardRules)
+
       const hardFilterResult = this.hardFilterService.evaluate(
         {
           age: candidate.age,
+          gender: candidate.gender,
           city: candidate.city,
+          salaryExpectation: candidate.salaryExpectation,
         },
-        {
-          ageFrom: 18,
-          ageTo: 40,
-          allowedCities: ['Moscow', 'Dubai'],
-        },
+        hardRules,
       )
 
       if (!hardFilterResult.passed) {
@@ -60,28 +61,20 @@ export class ScoringOrchestratorService {
             hardFilterPassed: false,
             hardRejectReason: hardFilterResult.reason ?? 'Hard filter failed',
             score: 0,
-            summary: 'Candidate was rejected by hard filters',
+            summary: 'Кандидат отклонён по жёстким фильтрам',
             reasonsJson: [],
             strengthsJson: [],
             weaknessesJson: [],
             status: 'rejected',
-            errorMessage: null,
           },
         })
-
-        const responsePayload = {
-          message: 'Candidate rejected by hard filters',
-          hardFilterResult,
-          aiScoringResult: null,
-          scoringRunId: scoringRun.id,
-        }
 
         await this.logsService.createApiLog({
           accountId: candidate.accountId,
           provider: 'internal',
           action: 'scoring.run',
           requestJson: requestPayload,
-          responseJson: responsePayload,
+          responseJson: { hardFilterResult, scoringRunId: scoringRun.id },
           status: 'rejected',
         })
 
@@ -95,6 +88,9 @@ export class ScoringOrchestratorService {
         }
       }
 
+      // --- AI Soft Scoring (with soft rules from DB) ---
+      const softRules = this.mapSoftRules(vacancy.softRules)
+
       const aiScoringResult = await this.aiScoringService.evaluate(
         {
           fullName: candidate.fullName,
@@ -107,6 +103,8 @@ export class ScoringOrchestratorService {
           jobDescription: vacancy.jobDescription,
           companyDescription: vacancy.companyDescription,
         },
+        softRules,
+        candidate.accountId,
       )
 
       const scoringRun = await this.prisma.scoringRun.create({
@@ -114,30 +112,21 @@ export class ScoringOrchestratorService {
           candidateId: candidate.id,
           vacancyId: vacancy.id,
           hardFilterPassed: true,
-          hardRejectReason: null,
           score: aiScoringResult.score,
           summary: aiScoringResult.summary,
           reasonsJson: aiScoringResult.reasons,
           strengthsJson: aiScoringResult.strengths,
           weaknessesJson: aiScoringResult.weaknesses,
           status: 'scored',
-          errorMessage: null,
         },
       })
-
-      const responsePayload = {
-        message: 'Scoring completed successfully',
-        hardFilterResult,
-        aiScoringResult,
-        scoringRunId: scoringRun.id,
-      }
 
       await this.logsService.createApiLog({
         accountId: candidate.accountId,
         provider: 'internal',
         action: 'scoring.run',
         requestJson: requestPayload,
-        responseJson: responsePayload,
+        responseJson: { hardFilterResult, aiScoringResult, scoringRunId: scoringRun.id },
         status: 'success',
       })
 
@@ -150,17 +139,15 @@ export class ScoringOrchestratorService {
         scoringRun,
       }
     } catch (error: any) {
+      this.logger.error(`Scoring failed for candidate ${candidateId}`, error?.stack)
+
       const scoringRun = await this.prisma.scoringRun.create({
         data: {
           candidateId: candidate.id,
           vacancyId: vacancy.id,
-          hardFilterPassed: false,
-          hardRejectReason: null,
-          score: 0,
+          hardFilterPassed: null,
+          score: null,
           summary: 'Scoring failed due to internal error',
-          reasonsJson: [],
-          strengthsJson: [],
-          weaknessesJson: [],
           status: 'error',
           errorMessage: error?.message ?? 'Unknown error',
         },
@@ -171,15 +158,41 @@ export class ScoringOrchestratorService {
         provider: 'internal',
         action: 'scoring.run',
         requestJson: requestPayload,
-        responseJson: {
-          message: 'Scoring failed',
-          errorMessage: error?.message ?? 'Unknown error',
-          scoringRunId: scoringRun.id,
-        },
+        responseJson: { error: error?.message, scoringRunId: scoringRun.id },
         status: 'error',
-      })
+      }).catch((logErr) => this.logger.warn('Failed to write error log', logErr))
 
       throw error
+    }
+  }
+
+  private mapHardRules(dbRules: any | null): HardFilterRules {
+    if (!dbRules) return {}
+    return {
+      ageFrom: dbRules.ageFrom,
+      ageTo: dbRules.ageTo,
+      gender: dbRules.gender,
+      allowedCities: dbRules.allowedCitiesJson as string[] | null,
+      relocationRequired: dbRules.relocationRequired,
+      minExperienceYears: dbRules.minExperienceYears,
+      salaryMax: dbRules.salaryMax,
+      languageRequirements: dbRules.languageRequirementsJson as string[] | null,
+      citizenshipRequirements: dbRules.citizenshipRequirementsJson as string[] | null,
+      employmentType: dbRules.employmentType,
+      workSchedule: dbRules.workSchedule,
+      requiredSkills: dbRules.requiredSkillsJson as string[] | null,
+      stopFactors: dbRules.stopFactorsJson as string[] | null,
+    }
+  }
+
+  private mapSoftRules(dbRules: any | null): AiScoringSoftRulesInput | null {
+    if (!dbRules) return null
+    return {
+      mustHave: dbRules.mustHaveJson as string[] | null,
+      niceToHave: dbRules.niceToHaveJson as string[] | null,
+      advantages: dbRules.advantagesJson as string[] | null,
+      risks: dbRules.risksJson as string[] | null,
+      hrComments: dbRules.hrComments,
     }
   }
 }

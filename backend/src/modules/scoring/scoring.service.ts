@@ -19,9 +19,7 @@ export class ScoringService {
         accountId: dto.accountId,
         amoLeadId: dto.amoLeadId,
       },
-      include: {
-        vacancy: true,
-      },
+      include: { vacancy: true },
     })
 
     if (!candidate) {
@@ -36,9 +34,21 @@ export class ScoringService {
       )
     }
 
-    return this.scoringOrchestratorService.run(
-      candidate.id,
-      candidate.vacancyId,
-    )
+    return this.scoringOrchestratorService.run(candidate.id, candidate.vacancyId)
+  }
+
+  async getHistory(candidateId: string) {
+    const candidate = await this.prisma.candidate.findUnique({
+      where: { id: candidateId },
+    })
+    if (!candidate) {
+      throw new NotFoundException(`Candidate "${candidateId}" not found`)
+    }
+
+    return this.prisma.scoringRun.findMany({
+      where: { candidateId },
+      orderBy: { createdAt: 'desc' },
+      include: { vacancy: { select: { id: true, name: true } } },
+    })
   }
 }
