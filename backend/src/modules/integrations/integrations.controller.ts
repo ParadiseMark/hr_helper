@@ -27,4 +27,15 @@ export class IntegrationsController {
   getStatus(@Req() req: any) {
     return this.integrationsService.getStatus(req.account.id)
   }
+
+  @Post('amocrm/test-lead')
+  createTestLead(
+    @Req() req: any,
+    @Body() body: { name?: string },
+  ) {
+    return this.integrationsService.createTestLead(
+      req.account.id,
+      body.name ?? 'TEST - HR Scoring Widget',
+    )
+  }
 }
