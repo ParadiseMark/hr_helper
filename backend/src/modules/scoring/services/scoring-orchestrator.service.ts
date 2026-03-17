@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { Injectable, Logger, NotFoundException, Optional, Inject } from '@nestjs/common'
 import { PrismaService } from '../../../prisma/prisma.service'
 import { LogsService } from '../../logs/logs.service'
 import { HardFilterService } from './hard-filter.service'
@@ -53,7 +53,13 @@ export class ScoringOrchestratorService {
         hardRules,
       )
 
+      const autoRejectSettings = vacancy.autoRejectSettings
+
       if (!hardFilterResult.passed) {
+        const shouldAutoReject = autoRejectSettings?.rejectOnHardFail === true && !!candidate.hhResponseId
+        const autoRejectType = shouldAutoReject ? 'hard' : null
+        const autoRejectStatus = shouldAutoReject ? 'pending' : candidate.hhResponseId ? 'not_needed' : null
+
         const scoringRun = await this.prisma.scoringRun.create({
           data: {
             candidateId: candidate.id,
@@ -66,6 +72,9 @@ export class ScoringOrchestratorService {
             strengthsJson: [],
             weaknessesJson: [],
             status: 'rejected',
+            autoRejectTriggered: shouldAutoReject,
+            autoRejectType,
+            autoRejectStatus,
           },
         })
 
@@ -74,7 +83,7 @@ export class ScoringOrchestratorService {
           provider: 'internal',
           action: 'scoring.run',
           requestJson: requestPayload,
-          responseJson: { hardFilterResult, scoringRunId: scoringRun.id },
+          responseJson: { hardFilterResult, scoringRunId: scoringRun.id, autoRejectTriggered: shouldAutoReject },
           status: 'rejected',
         })
 
@@ -107,6 +116,12 @@ export class ScoringOrchestratorService {
         candidate.accountId,
       )
 
+      const shouldSoftReject =
+        autoRejectSettings?.rejectOnSoftFail === true &&
+        autoRejectSettings?.softRejectThreshold != null &&
+        aiScoringResult.score < autoRejectSettings.softRejectThreshold &&
+        !!candidate.hhResponseId
+
       const scoringRun = await this.prisma.scoringRun.create({
         data: {
           candidateId: candidate.id,
@@ -118,6 +133,9 @@ export class ScoringOrchestratorService {
           strengthsJson: aiScoringResult.strengths,
           weaknessesJson: aiScoringResult.weaknesses,
           status: 'scored',
+          autoRejectTriggered: shouldSoftReject,
+          autoRejectType: shouldSoftReject ? 'soft' : null,
+          autoRejectStatus: shouldSoftReject ? 'pending' : candidate.hhResponseId ? 'not_needed' : null,
         },
       })
 
@@ -126,7 +144,7 @@ export class ScoringOrchestratorService {
         provider: 'internal',
         action: 'scoring.run',
         requestJson: requestPayload,
-        responseJson: { hardFilterResult, aiScoringResult, scoringRunId: scoringRun.id },
+        responseJson: { hardFilterResult, aiScoringResult, scoringRunId: scoringRun.id, autoRejectTriggered: shouldSoftReject },
         status: 'success',
       })
 

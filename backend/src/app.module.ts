@@ -13,6 +13,7 @@ import { IntegrationsModule } from './modules/integrations/integrations.module'
 import { LogsModule } from './modules/logs/logs.module'
 import { WebhooksModule } from './modules/webhooks/webhooks.module'
 import { AmoIntegrationModule } from './modules/amo-integration/amo-integration.module'
+import { HhIntegrationModule } from './modules/hh-integration/hh-integration.module'
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { AmoIntegrationModule } from './modules/amo-integration/amo-integration.
     LogsModule,
     WebhooksModule,
     AmoIntegrationModule,
+    HhIntegrationModule,
   ],
 })
 export class AppModule {}

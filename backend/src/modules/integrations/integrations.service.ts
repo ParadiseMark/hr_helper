@@ -1,12 +1,14 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Optional } from '@nestjs/common'
 import { AmoOAuthService } from '../amo-integration/services/amo-oauth/amo-oauth.service'
 import { AmoCrmApiService } from '../amo-integration/services/amo-crm-api/amo-crm-api.service'
+import { HhOAuthService } from '../hh-integration/services/hh-oauth.service'
 
 @Injectable()
 export class IntegrationsService {
   constructor(
     private readonly amoOAuthService: AmoOAuthService,
     private readonly amoCrmApiService: AmoCrmApiService,
+    @Optional() private readonly hhOAuthService?: HhOAuthService,
   ) {}
 
   getAmoCrmAuthUrl(accountId: string) {
@@ -21,7 +23,10 @@ export class IntegrationsService {
 
   async getStatus(accountId: string) {
     const amocrm = await this.amoOAuthService.getIntegrationStatus(accountId)
-    return { accountId, integrations: { amocrm } }
+    const hh = this.hhOAuthService
+      ? await this.hhOAuthService.getIntegrationStatus(accountId)
+      : { connected: false, provider: 'hh' }
+    return { accountId, integrations: { amocrm, hh } }
   }
 
   async createTestLead(accountId: string, name: string) {

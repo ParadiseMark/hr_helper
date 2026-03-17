@@ -7,5 +7,6 @@ import { CandidatesService } from './candidates.service'
   imports: [PrismaModule],
   controllers: [CandidatesController],
   providers: [CandidatesService],
+  exports: [CandidatesService],
 })
 export class CandidatesModule {}
