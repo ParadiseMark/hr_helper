@@ -65,4 +65,14 @@ export class VacanciesController {
   upsertAutoRejectSettings(@Param('id') id: string, @Body() dto: UpsertAutoRejectSettingsDto) {
     return this.vacanciesService.upsertAutoRejectSettings(id, dto)
   }
+
+  // ─── amoCRM Settings ──────────────────────────────────────
+
+  @Put(':id/amo-settings')
+  updateAmoSettings(
+    @Param('id') id: string,
+    @Body() body: { amoPipelineId?: string; amoStatusId?: string; amoResponsibleUserId?: string },
+  ) {
+    return this.vacanciesService.updateAmoSettings(id, body)
+  }
 }

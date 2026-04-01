@@ -1,64 +1,37 @@
 import { Injectable } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import { AmoCrmApiService } from '../amo-crm-api/amo-crm-api.service'
+import { AmoFieldProvisionerService } from '../amo-field-provisioner/amo-field-provisioner.service'
 import { AmoCrmWritebackPayload } from '../../types/amo-writeback.types'
 
 @Injectable()
 export class AmoCrmWritebackService {
   constructor(
-    private readonly configService: ConfigService,
     private readonly amoCrmApiService: AmoCrmApiService,
+    private readonly amoFieldProvisioner: AmoFieldProvisionerService,
   ) {}
 
   async writeScoringResult(payload: AmoCrmWritebackPayload) {
-    const aiScoreFieldId = Number(
-      this.configService.get<string>('AMOCRM_FIELD_AI_SCORE_ID'),
-    )
-
-    const aiScoringStatusFieldId = Number(
-      this.configService.get<string>('AMOCRM_FIELD_AI_SCORING_STATUS_ID'),
-    )
-
-    const aiHardFilterStatusFieldId = Number(
-      this.configService.get<string>('AMOCRM_FIELD_AI_HARD_FILTER_STATUS_ID'),
-    )
-
-    const aiLastScoredAtFieldId = Number(
-      this.configService.get<string>('AMOCRM_FIELD_AI_LAST_SCORED_AT_ID'),
-    )
+    const amoFields = await this.amoFieldProvisioner.getFields(payload.accountId)
+    if (!amoFields) {
+      throw new Error(`amoCRM fields not provisioned for account ${payload.accountId}`)
+    }
 
     const customFieldsValues = [
       {
-        field_id: aiScoreFieldId,
-        values: [
-          {
-            value: payload.fields.aiScore ?? 0,
-          },
-        ],
+        field_id: amoFields.aiScore,
+        values: [{ value: payload.fields.aiScore ?? 0 }],
       },
       {
-        field_id: aiScoringStatusFieldId,
-        values: [
-          {
-            value: payload.fields.aiScoringStatus,
-          },
-        ],
+        field_id: amoFields.aiStatus,
+        values: [{ value: payload.fields.aiScoringStatus }],
       },
       {
-        field_id: aiHardFilterStatusFieldId,
-        values: [
-          {
-            value: payload.fields.aiHardFilterStatus,
-          },
-        ],
+        field_id: amoFields.hardFilterStatus,
+        values: [{ value: payload.fields.aiHardFilterStatus }],
       },
       {
-        field_id: aiLastScoredAtFieldId,
-        values: [
-          {
-            value: Math.floor(new Date(payload.fields.aiLastScoredAt).getTime() / 1000),
-          },
-        ],
+        field_id: amoFields.lastScoredAt,
+        values: [{ value: Math.floor(new Date(payload.fields.aiLastScoredAt).getTime() / 1000) }],
       },
     ]
 

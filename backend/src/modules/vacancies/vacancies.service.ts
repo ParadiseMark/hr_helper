@@ -100,6 +100,16 @@ export class VacanciesService {
     })
   }
 
+  // ─── amoCRM Settings ──────────────────────────────────────
+
+  async updateAmoSettings(
+    id: string,
+    data: { amoPipelineId?: string; amoStatusId?: string; amoResponsibleUserId?: string },
+  ) {
+    await this.ensureExists(id)
+    return this.prisma.vacancy.update({ where: { id }, data })
+  }
+
   // ─── Helpers ───────────────────────────────────────────────
 
   private async ensureExists(id: string) {

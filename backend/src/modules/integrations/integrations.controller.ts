@@ -28,6 +28,21 @@ export class IntegrationsController {
     return this.integrationsService.getStatus(req.account.id)
   }
 
+  @Post('amocrm/provision-fields')
+  provisionFields(@Req() req: any) {
+    return this.integrationsService.provisionFields(req.account.id)
+  }
+
+  @Get('amocrm/pipelines')
+  getPipelines(@Req() req: any) {
+    return this.integrationsService.getPipelines(req.account.id)
+  }
+
+  @Get('amocrm/users')
+  getUsers(@Req() req: any) {
+    return this.integrationsService.getUsers(req.account.id)
+  }
+
   @Post('amocrm/test-lead')
   createTestLead(
     @Req() req: any,

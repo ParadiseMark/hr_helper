@@ -18,6 +18,8 @@ model Account {
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")
 
+  amoFieldsJson  Json?          @map("amo_fields_json")
+
   vacancies      Vacancy[]
   candidates     Candidate[]
   integrations   Integration[]
@@ -51,9 +53,12 @@ model Vacancy {
   hhVacancyId         String?                   @map("hh_vacancy_id")
   jobDescription      String?                   @map("job_description")
   companyDescription  String?                   @map("company_description")
-  isActive            Boolean                   @default(true) @map("is_active")
-  createdAt           DateTime                  @default(now()) @map("created_at")
-  updatedAt           DateTime                  @updatedAt @map("updated_at")
+  isActive             Boolean                   @default(true) @map("is_active")
+  amoPipelineId        String?                   @map("amo_pipeline_id")
+  amoStatusId          String?                   @map("amo_status_id")
+  amoResponsibleUserId String?                   @map("amo_responsible_user_id")
+  createdAt            DateTime                  @default(now()) @map("created_at")
+  updatedAt            DateTime                  @updatedAt @map("updated_at")
 
   account             Account                   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   candidates          Candidate[]
@@ -128,6 +133,7 @@ model Candidate {
   accountId           String        @map("account_id")
   vacancyId           String?       @map("vacancy_id")
   amoLeadId           String?       @map("amo_lead_id")
+  amoContactId        String?       @map("amo_contact_id")
   hhCandidateId       String?       @map("hh_candidate_id")
   hhResponseId        String?       @map("hh_response_id")
   fullName            String        @map("full_name")
@@ -135,6 +141,17 @@ model Candidate {
   gender              String?
   city                String?
   salaryExpectation   Int?          @map("salary_expectation")
+  phone               String?
+  email               String?
+  hhResumeUrl         String?       @map("hh_resume_url")
+  hhProfileUrl        String?       @map("hh_profile_url")
+  experienceMonths    Int?          @map("experience_months")
+  employmentType      String?       @map("employment_type")
+  workSchedule        String?       @map("work_schedule")
+  skillsJson          Json?         @map("skills_json")
+  languagesJson       Json?         @map("languages_json")
+  citizenshipJson     Json?         @map("citizenship_json")
+  coverLetter         String?       @map("cover_letter")
   resumeText          String?       @map("resume_text")
   rawResumeJson       Json?         @map("raw_resume_json")
   createdAt           DateTime      @default(now()) @map("created_at")

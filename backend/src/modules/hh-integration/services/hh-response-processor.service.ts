@@ -1,7 +1,11 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { HttpService } from '@nestjs/axios'
+import { firstValueFrom } from 'rxjs'
 import { PrismaService } from '../../../prisma/prisma.service'
 import { HhApiService, HhResume } from './hh-api.service'
+import { HhOAuthService } from './hh-oauth.service'
 import { AmoCrmApiService } from '../../amo-integration/services/amo-crm-api/amo-crm-api.service'
+import { AmoFieldProvisionerService } from '../../amo-integration/services/amo-field-provisioner/amo-field-provisioner.service'
 
 export interface ProcessedCandidate {
   candidateId: string
@@ -13,11 +17,15 @@ export interface ProcessedCandidate {
 @Injectable()
 export class HhResponseProcessorService {
   private readonly logger = new Logger(HhResponseProcessorService.name)
+  private readonly HH_API_BASE = 'https://api.hh.ru'
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly hhApiService: HhApiService,
+    private readonly hhOAuthService: HhOAuthService,
+    private readonly httpService: HttpService,
     private readonly amoCrmApiService: AmoCrmApiService,
+    private readonly amoFieldProvisioner: AmoFieldProvisionerService,
   ) {}
 
   async processResponse(
@@ -26,6 +34,7 @@ export class HhResponseProcessorService {
     negotiationId: string,
     resumeId: string,
     resumeSnapshotFromNegotiation?: any,
+    coverLetter?: string,
   ): Promise<ProcessedCandidate> {
     const vacancy = await this.prisma.vacancy.findUnique({ where: { id: vacancyId } })
     if (!vacancy) throw new NotFoundException(`Vacancy ${vacancyId} not found`)
@@ -42,6 +51,7 @@ export class HhResponseProcessorService {
 
     const fullName = this.buildFullName(source)
     const resumeText = this.buildResumeText(source)
+    const enrichedData = this.extractEnrichedData(source, resumeId)
 
     const existing = await this.prisma.candidate.findFirst({
       where: { accountId, vacancyId, hhCandidateId: resumeId },
@@ -59,15 +69,12 @@ export class HhResponseProcessorService {
           gender: source.gender?.id ?? existing.gender,
           city: source.area?.name ?? existing.city,
           salaryExpectation: source.salary?.amount ?? existing.salaryExpectation,
+          coverLetter: coverLetter ?? existing.coverLetter,
+          ...enrichedData,
         },
       })
 
-      return {
-        candidateId: existing.id,
-        amoLeadId: existing.amoLeadId,
-        fullName,
-        isNew: false,
-      }
+      return { candidateId: existing.id, amoLeadId: existing.amoLeadId, fullName, isNew: false }
     }
 
     const candidate = await this.prisma.candidate.create({
@@ -83,31 +90,137 @@ export class HhResponseProcessorService {
         salaryExpectation: source.salary?.amount ?? null,
         resumeText,
         rawResumeJson: resume ?? resumeSnapshotFromNegotiation ?? undefined,
+        coverLetter: coverLetter ?? null,
+        ...enrichedData,
       },
     })
 
     let amoLeadId: string | null = null
+    let amoContactId: string | null = null
+
     try {
+      const amoFields = await this.amoFieldProvisioner.getFields(accountId)
+
+      // 1. Create contact
+      const contactCustomFields: { field_id: number; values: { value: any }[] }[] = []
+      if (amoFields?.hhProfileUrl && enrichedData.hhProfileUrl) {
+        contactCustomFields.push({
+          field_id: amoFields.hhProfileUrl,
+          values: [{ value: enrichedData.hhProfileUrl }],
+        })
+      }
+
+      const contact = await this.amoCrmApiService.createContact(accountId, {
+        name: fullName,
+        phone: enrichedData.phone ?? null,
+        email: enrichedData.email ?? null,
+        customFieldsValues: contactCustomFields.length ? contactCustomFields : undefined,
+      })
+      amoContactId = contact ? String(contact.id) : null
+
+      // 2. Create lead with pipeline/stage/manager and contact
+      const leadCustomFields: { field_id: number; values: { value: any }[] }[] = []
+      if (amoFields?.resumeUrl && enrichedData.hhResumeUrl) {
+        leadCustomFields.push({
+          field_id: amoFields.resumeUrl,
+          values: [{ value: enrichedData.hhResumeUrl }],
+        })
+      }
+
       const leadResult = await this.amoCrmApiService.createOrUpdateLead(accountId, {
         name: `${fullName} — ${vacancy.name}`,
+        pipelineId: vacancy.amoPipelineId,
+        statusId: vacancy.amoStatusId,
+        responsibleUserId: vacancy.amoResponsibleUserId,
+        customFieldsValues: leadCustomFields.length ? leadCustomFields : undefined,
+        contactIds: amoContactId ? [Number(amoContactId)] : undefined,
       })
       amoLeadId = String(leadResult._embedded?.leads?.[0]?.id ?? null)
 
       if (amoLeadId) {
         await this.prisma.candidate.update({
           where: { id: candidate.id },
-          data: { amoLeadId },
+          data: { amoLeadId, amoContactId },
         })
+
+        // 3. Attach PDF resume
+        await this.attachResumePdf(accountId, amoLeadId, resumeId, fullName)
+
+        // 4. Add cover letter note
+        if (coverLetter?.trim()) {
+          await this.amoCrmApiService.createLeadNote(
+            accountId,
+            amoLeadId,
+            `Сопроводительное письмо:\n\n${coverLetter}`,
+          )
+        }
       }
     } catch (err: any) {
-      this.logger.warn(`Failed to create amoCRM lead for candidate ${candidate.id}: ${err?.message}`)
+      this.logger.warn(`Failed to create amoCRM lead/contact for candidate ${candidate.id}: ${err?.message}`)
     }
 
+    return { candidateId: candidate.id, amoLeadId, fullName, isNew: true }
+  }
+
+  private extractEnrichedData(source: any, resumeId: string) {
+    const phone = this.extractContact(source.contact, 'cell') ??
+      this.extractContact(source.contact, 'home') ??
+      null
+    const email = this.extractContact(source.contact, 'email') ?? null
+
     return {
-      candidateId: candidate.id,
-      amoLeadId,
-      fullName,
-      isNew: true,
+      hhResumeUrl: `https://hh.ru/resume/${resumeId}`,
+      hhProfileUrl: source.alternate_url ?? null,
+      phone,
+      email,
+      experienceMonths: source.total_experience?.months ?? null,
+      employmentType: source.employment?.id ?? null,
+      workSchedule: source.schedule?.id ?? null,
+      skillsJson: source.skill_set?.length ? source.skill_set : undefined,
+      languagesJson: source.language?.length ? source.language : undefined,
+      citizenshipJson: source.citizenship?.length ? source.citizenship : undefined,
+    }
+  }
+
+  private extractContact(contacts: any[], type: string): string | null {
+    if (!Array.isArray(contacts)) return null
+    const found = contacts.find((c: any) => c.type?.id === type || c.preferred === true && type === 'cell')
+    return found?.value?.formatted ?? found?.value ?? null
+  }
+
+  private async attachResumePdf(
+    accountId: string,
+    amoLeadId: string,
+    resumeId: string,
+    fullName: string,
+  ) {
+    try {
+      const tokens = await this.hhOAuthService.getValidTokens(accountId)
+      const pdfUrl = `${this.HH_API_BASE}/resumes/${resumeId}/download?format=pdf`
+
+      const response = await firstValueFrom(
+        this.httpService.get(pdfUrl, {
+          headers: {
+            Authorization: `Bearer ${tokens.accessToken}`,
+            'User-Agent': 'HR-Scoring-Widget/1.0 (hr-scoring@example.com)',
+          },
+          responseType: 'arraybuffer',
+          timeout: 30000,
+        }),
+      )
+
+      const fileBuffer = Buffer.from(response.data)
+      const filename = `resume_${fullName.replace(/\s+/g, '_')}.pdf`
+
+      await this.amoCrmApiService.attachFileToLeadNote(
+        accountId,
+        amoLeadId,
+        fileBuffer,
+        filename,
+        'application/pdf',
+      )
+    } catch (err: any) {
+      this.logger.warn(`Could not attach PDF resume to lead ${amoLeadId}: ${err?.message}`)
     }
   }
 
