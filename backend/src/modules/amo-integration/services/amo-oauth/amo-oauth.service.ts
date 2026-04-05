@@ -199,8 +199,9 @@ export class AmoOAuthService {
   private buildBaseUrl(amoDomain: string | null, referer?: string): string {
     if (amoDomain) return `https://${amoDomain}.amocrm.ru`
     if (referer) {
-      const match = referer.match(/https?:\/\/[\w-]+\.amocrm\.ru/)
-      if (match) return match[0]
+      // referer может быть как "sub.amocrm.ru" так и "https://sub.amocrm.ru"
+      const match = referer.match(/([\w-]+)\.amocrm\.ru/)
+      if (match) return `https://${match[1]}.amocrm.ru`
     }
     throw new UnauthorizedException('Cannot determine amoCRM domain. Set amoDomain on the account.')
   }
