@@ -290,6 +290,46 @@
       </div>
     </div>
 
+    <!-- amoCRM Settings -->
+    <div class="card" data-section="amo">
+      <div class="card-header" onclick="toggleSection('amo')">
+        <h2><span class="chevron open" id="chevron-amo">▶</span> amoCRM — Настройки сделки</h2>
+        <span class="badge" id="badge-amo">Загрузка...</span>
+      </div>
+      <div class="card-body" id="body-amo">
+        <div id="amo-not-connected" style="display:none; color: var(--danger); font-size: 14px; margin-bottom: 16px;">
+          ⚠ amoCRM не подключён. Подключите интеграцию через OAuth.
+        </div>
+        <div id="amo-fields-block">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Воронка</label>
+              <select id="amo-pipeline">
+                <option value="">— Выберите воронку —</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Этап</label>
+              <select id="amo-status" disabled>
+                <option value="">— Сначала выберите воронку —</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Ответственный менеджер</label>
+              <select id="amo-user">
+                <option value="">— Выберите менеджера —</option>
+              </select>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn btn-primary" onclick="saveAmoSettings()">Сохранить</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Auto Reject -->
     <div class="card" data-section="reject">
       <div class="card-header" onclick="toggleSection('reject')">
@@ -383,6 +423,81 @@ function joinComma(arr) {
 }
 
 let currentVacancyId = null
+let amoPipelinesData = [] // { id, name, statuses: [{id, name}] }
+
+async function loadAmoCrmData() {
+  const badge = document.getElementById('badge-amo')
+  try {
+    const [pipelines, users] = await Promise.all([
+      api('GET', '/integrations/amocrm/pipelines'),
+      api('GET', '/integrations/amocrm/users'),
+    ])
+
+    amoPipelinesData = pipelines || []
+
+    const pipelineSelect = document.getElementById('amo-pipeline')
+    pipelineSelect.innerHTML = '<option value="">— Выберите воронку —</option>'
+    amoPipelinesData.forEach(p => {
+      const opt = document.createElement('option')
+      opt.value = p.id
+      opt.textContent = p.name
+      pipelineSelect.appendChild(opt)
+    })
+
+    const userSelect = document.getElementById('amo-user')
+    userSelect.innerHTML = '<option value="">— Выберите менеджера —</option>'
+    ;(users || []).forEach(u => {
+      const opt = document.createElement('option')
+      opt.value = u.id
+      opt.textContent = u.name
+      userSelect.appendChild(opt)
+    })
+
+    pipelineSelect.addEventListener('change', () => {
+      updateStatusOptions(pipelineSelect.value)
+    })
+
+    badge.textContent = 'Подключён'
+    badge.className = 'badge badge-active'
+    document.getElementById('amo-not-connected').style.display = 'none'
+    document.getElementById('amo-fields-block').style.display = 'block'
+  } catch (e) {
+    badge.textContent = 'Не подключён'
+    badge.className = 'badge badge-inactive'
+    document.getElementById('amo-not-connected').style.display = 'block'
+    document.getElementById('amo-fields-block').style.display = 'none'
+  }
+}
+
+function updateStatusOptions(pipelineId, selectedStatusId) {
+  const statusSelect = document.getElementById('amo-status')
+  const pipeline = amoPipelinesData.find(p => String(p.id) === String(pipelineId))
+  statusSelect.innerHTML = '<option value="">— Выберите этап —</option>'
+  const statuses = pipeline?._embedded?.statuses || pipeline?.statuses || []
+  if (pipeline && statuses.length) {
+    statuses.forEach(s => {
+      const opt = document.createElement('option')
+      opt.value = s.id
+      opt.textContent = s.name
+      if (selectedStatusId && String(s.id) === String(selectedStatusId)) opt.selected = true
+      statusSelect.appendChild(opt)
+    })
+    statusSelect.disabled = false
+  } else {
+    statusSelect.disabled = !pipelineId
+  }
+}
+
+async function saveAmoSettings() {
+  try {
+    await api('PUT', `/vacancies/${currentVacancyId}/amo-settings`, {
+      amoPipelineId: strOrNull(document.getElementById('amo-pipeline').value),
+      amoStatusId: strOrNull(document.getElementById('amo-status').value),
+      amoResponsibleUserId: strOrNull(document.getElementById('amo-user').value),
+    })
+    toast('Настройки amoCRM сохранены')
+  } catch (e) { toast(e.message, 'error') }
+}
 
 async function loadVacancies() {
   try {
@@ -442,6 +557,15 @@ async function loadVacancy(id) {
     document.getElementById('s-advantagesJson').value = joinLines(s.advantagesJson)
     document.getElementById('s-risksJson').value = joinLines(s.risksJson)
     document.getElementById('s-hrComments').value = s.hrComments || ''
+
+    // amoCRM settings
+    if (v.amoPipelineId) {
+      document.getElementById('amo-pipeline').value = v.amoPipelineId
+      updateStatusOptions(v.amoPipelineId, v.amoStatusId)
+    }
+    if (v.amoResponsibleUserId) {
+      document.getElementById('amo-user').value = v.amoResponsibleUserId
+    }
 
     const r = v.autoRejectSettings || {}
     document.getElementById('r-rejectOnHardFail').checked = !!r.rejectOnHardFail
@@ -525,6 +649,7 @@ async function saveAutoReject() {
 }
 
 loadVacancies()
+loadAmoCrmData()
 </script>
 </body>
 </html>
