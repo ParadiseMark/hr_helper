@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Query, Body, Req } from '@nestjs/common'
+import { Controller, Get, Post, Query, Body, Req, Res } from '@nestjs/common'
+import type { Response } from 'express'
 import { IntegrationsService } from './integrations.service'
 import { Public } from '../auth/decorators/public.decorator'
 
@@ -9,6 +10,21 @@ export class IntegrationsController {
   @Get('amocrm/auth-url')
   getAmoCrmAuthUrl(@Req() req: any) {
     return this.integrationsService.getAmoCrmAuthUrl(req.account.id)
+  }
+
+  @Public()
+  @Get('amocrm/callback')
+  async handleAmoCrmCallbackGet(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Query('referer') referer: string,
+    @Res() res: Response,
+  ) {
+    if (!code || !state) {
+      return res.status(200).send('OK')
+    }
+    await this.integrationsService.handleAmoCrmCallback(code, state, referer)
+    return res.send('<html><body><h2>amoCRM успешно подключён.</h2><script>window.close()</script></body></html>')
   }
 
   @Public()
