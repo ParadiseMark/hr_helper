@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, Req, Query, Param } from '@nestjs/common'
+import { Controller, Get, Post, Body, Req, Query, Param, Res } from '@nestjs/common'
+import type { Response } from 'express'
 import { HhOAuthService } from './services/hh-oauth.service'
 import { HhApiService } from './services/hh-api.service'
 import { HhResponseProcessorService } from './services/hh-response-processor.service'
@@ -18,6 +19,18 @@ export class HhIntegrationController {
   getAuthUrl(@Req() req: any) {
     const url = this.hhOAuthService.getAuthUrl(req.account.id)
     return { authUrl: url }
+  }
+
+  @Public()
+  @Get('callback')
+  async hhCallback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Res() res: Response,
+  ) {
+    if (!code || !state) return res.status(200).send('OK')
+    await this.hhOAuthService.exchangeCode(code, state)
+    return res.send('<html><body><h2>hh.ru успешно подключён.</h2><script>window.close()</script></body></html>')
   }
 
   @Post('exchange-code')
